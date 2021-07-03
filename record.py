@@ -14,26 +14,23 @@ def main():
 
     # use synthetic board for demo
     params = BrainFlowInputParams()
-    board = BoardShim(8, params)
+    params.other_info = '8'
+    params.ip_address = '224.0.0.1'
+    params.ip_port = 6666
+    print(params)
+    board = BoardShim(-2, params)
     board.prepare_session()
-    board.start_stream(45000, 'streaming_board://224.0.0.1:6666')
+    board.start_stream(45000, 'file:///home/a0n/Unicorn-Suite-Hybrid-Black/brainflow_start/Testdump.gtec:w')
     BoardShim.log_message(LogLevels.LEVEL_INFO.value, 'start sleeping in the main thread')
     # time.sleep(5)
     # data = board.get_board_data()
     # print(data)
     # BoardShim.log_message(LogLevels.LEVEL_INFO.value, 'dumping first 5 seconds of measurement')
-
-    time.sleep(60)
-    data = board.get_board_data()
-    
-    board.stop_stream()
-    board.release_session()
-
-    # demo how to convert it to pandas DF and plot data
-    eeg_channels = BoardShim.get_eeg_channels(8)
-    df = pd.DataFrame(np.transpose(data))
-    BoardShim.log_message(LogLevels.LEVEL_INFO.value, 'Last Data From the Board')
-    print(df.tail(10))
+    while True:
+        time.sleep(5)
+        data = board.get_board_data()
+        print(data)
+    input("Press Enter to stop streaming...")
 
     # # demo for data serialization using brainflow API, we recommend to use it instead pandas.to_csv()
     # DataFilter.write_file(data, 'test.csv', 'w')  # use 'a' for append mode
