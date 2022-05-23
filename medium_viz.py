@@ -30,7 +30,6 @@ def send_message_to_servo(number, value):
 def send_message_to_mqtt(path, value):
     publish.single(path, str(value), hostname="192.168.1.1")
 
-
 class Graph:
     def __init__(self, board_shim):
         self.board_id = board_shim.get_board_id()
@@ -38,12 +37,18 @@ class Graph:
         self.eeg_channels = BoardShim.get_eeg_channels(self.board_id)
         self.accel_channels = BoardShim.get_accel_channels(self.board_id)
         self.gyro_channels = BoardShim.get_gyro_channels(self.board_id)
+        self.feature_bands = [1,2,3,4,5,6,7,8,9,10]
         self.sampling_rate = BoardShim.get_sampling_rate(self.board_id)
-        self.update_speed_ms = 100
+        self.update_speed_ms = 50
         self.window_size = 4
         self.num_points = self.window_size * self.sampling_rate
         self.num_points_big = self.window_size * self.sampling_rate * 2
+        self.filtered_feature_data = np.zeros(shape=(len(self.feature_bands),int(self.window_size*(1000 / self.update_speed_ms))), dtype=float)
+
+        self.mental_states = ['relaxed','concentrated']
+        self.mental_state_data = np.zeros(shape=(len(self.mental_states),int(self.window_size*(1000 / self.update_speed_ms))), dtype=float)
         
+
         self.lastMoveTime = time.time()
         self.eeg_names = BoardShim.get_eeg_names(self.board_id)
         print(self.eeg_names)
@@ -117,6 +122,33 @@ class Graph:
             curve = p.plot()
             self.curves.append(curve)
 
+        current_curves_count = len(self.curves)
+        for i in self.feature_bands:
+            p = self.win.addPlot(row=i+current_curves_count,col=0)
+            p.showAxis('left', False)
+            p.setMenuEnabled('left', False)
+            p.showAxis('bottom', False)
+            p.setMenuEnabled('bottom', False)
+            # p.setYRange(0,1)
+            
+            p.setTitle(f"Feature #{i}")
+            self.plots.append(p)
+            curve = p.plot()
+            self.curves.append(curve)
+
+        current_curves_count = len(self.curves)
+        for count,name in enumerate(self.mental_states):
+            p = self.win.addPlot(row=count+current_curves_count+1,col=0)
+            p.showAxis('left', False)
+            p.setMenuEnabled('left', False)
+            p.showAxis('bottom', False)
+            p.setMenuEnabled('bottom', False)
+            p.setYRange(0,1)
+            
+            p.setTitle(f"{name}")
+            self.plots.append(p)
+            curve = p.plot()
+            self.curves.append(curve)
         print("Initialized Time series with", len(self.eeg_channels), "Channels")
         print("Rendering", len(self.curves), "Curves")
 
@@ -170,17 +202,20 @@ class Graph:
                                       FilterTypes.BUTTERWORTH.value, 1)
 
             self.curves[count+len(self.eeg_channels)].setData(data[channel][-self.num_points:])
-            if count == 0:
-                if np.average(abs(data[channel][-1])) > 0.05:
-                    # send_message_to_mqtt("/themotor/move", str(int(np.average(data[channel][-1])*5000)))
-                    print(np.average(data[channel][-1]))
+            # if count == 0:
+            #     if np.average(abs(data[channel][-1])) > 0.05:
+            #         # send_message_to_mqtt("/themotor/move", str(int(np.average(data[channel][-1])*5000)))
+            #         print(np.average(data[channel][-1]))
 
         for count, channel in enumerate(self.gyro_channels):
             self.curves[count+len(self.eeg_channels)+len(self.accel_channels)].setData(data[channel][-self.num_points:])
-            if count == 2:
-                movement = np.average(data[channel][-100:])
-                if abs(movement) > 20:
-                    send_message_to_mqtt("/theground/rotation", str(int(movement*10000)))
+        
+        # print(f"feature band {self.feature_bands}")
+
+        #     if count == 2:
+        #         movement = np.average(data[channel][-100:])
+        #         if abs(movement) > 20:
+        #             send_message_to_mqtt("/theground/rotation", str(int(movement*10000)))
 
             # if count == 0:
             #     movement = np.average(data[channel][-100:])
@@ -188,10 +223,10 @@ class Graph:
             #         send_message_to_mqtt("/themotor/move", str(int(movement*100)))
 
 
-            if count == 1:
-                movement = np.average(data[channel][-100:])
-                if abs(movement) > 20:
-                    send_message_to_mqtt("/thesun/rotation", str(int(movement*10000)))
+            # if count == 1:
+            #     movement = np.average(data[channel][-100:])
+            #     if abs(movement) > 20:
+            #         send_message_to_mqtt("/thesun/rotation", str(int(movement*10000)))
 
             # print(np.average(data[channel][-100:]))
 
@@ -210,53 +245,69 @@ class Graph:
         # print(f"alpha/beta {average_band_power[4]/average_band_power[5]}")
         
         bands = DataFilter.get_avg_band_powers(filtered_data, self.eeg_channels, self.sampling_rate, True)
-        print(bands[0])
+        print(f"AvgBand: {bands[0]}, StdBand: {bands[1]}")
 
-        send_message_to_mqtt("/servos/1", bands[1][0])
-        send_message_to_mqtt("/servos/2", bands[1][1])
-        send_message_to_mqtt("/servos/0", bands[1][2])
-        send_message_to_mqtt("/servos/5", 1.0 - bands[1][3])
-        send_message_to_mqtt("/servos/6", 1.0 - bands[1][4])
+        # send_message_to_mqtt("/servos/1", bands[1][0])
+        # send_message_to_mqtt("/servos/2", bands[1][1])
+        # send_message_to_mqtt("/servos/0", bands[1][2])
+        # send_message_to_mqtt("/servos/5", 1.0 - bands[1][3])
+        # send_message_to_mqtt("/servos/6", 1.0 - bands[1][4])
 
 
-        send_message_to_mqtt("/servos/3", bands[0][0])
-        send_message_to_mqtt("/servos/4", bands[0][1])
+        # send_message_to_mqtt("/servos/3", bands[0][0])
+        # send_message_to_mqtt("/servos/4", bands[0][1])
 
         # send_message_to_mqtt("/servos/0", 1.0 - bands[1][1])
         
 
         feature_vector = np.concatenate((bands[0], bands[1]))
+
+        
+        self.filtered_feature_data = np.append(self.filtered_feature_data, feature_vector[:,None], axis=1)
+        self.filtered_feature_data = np.delete(self.filtered_feature_data, 0, axis=1)
+
+        for count, channel in enumerate(self.feature_bands):
+            self.curves[count+len(self.eeg_channels)+len(self.accel_channels)+len(self.gyro_channels)].setData(self.filtered_feature_data[count][-self.num_points:])
+        
+        print(len(self.filtered_feature_data[0]))
+
+        print(f"Feature: {feature_vector[:,None]}")
         # print(feature_vector)
         #calc concentration
         # concentration_params = BrainFlowModelParams(BrainFlowMetrics.CONCENTRATION.value, BrainFlowClassifiers.KNN.value)
         # concentration = MLModel(concentration_params)
         # concentration.prepare()
         concentration_value = self.concentration.predict(feature_vector)
-        print('Concentration: %f' % concentration_value)
+        # print('Concentration: %f' % concentration_value)
         # concentration.release()
 
         #calc relaxation
         
         relaxation_value = self.relaxation.predict(feature_vector)
         # relaxation.release()
-        print(f"Relaxation: {relaxation_value}, Concentration: {concentration_value}")
+        # print(f"Relaxation: {relaxation_value}, Concentration: {concentration_value}")
+
+        self.mental_state_data = np.delete(np.append(self.mental_state_data, [[relaxation_value],[concentration_value]], axis=1), 0, axis=1)
+        
+        for count, channel in enumerate(self.mental_states):
+            self.curves[count+len(self.eeg_channels)+len(self.accel_channels)+len(self.gyro_channels)+len(self.feature_bands)].setData(self.mental_state_data[count][-self.num_points:])
+        
         # send_message_to_tidal('concentration', concentration_value)
         # send_message_to_tidal('relaxation', relaxation_value)
         # send_message_to_servo(2,relaxation_value)
-        send_message_to_mqtt("/thelight/1/brightness", concentration_value)
-        send_message_to_mqtt("/thesun/light/1/brightness", relaxation_value)
-        send_message_to_mqtt("/thesun/light/2/brightness", relaxation_value)
-        print('telax')
-        timeNow = time.time()
-        if (relaxation_value < 0.3 and (timeNow - self.lastMoveTime) > 3.5):
-            self.lastMoveTime = timeNow
-            print("move")
-            if self.lastDirection == -1:
-                send_message_to_mqtt("/themotor/move", "-" + str(random.randrange(1000,10000)))
-                self.lastDirection = 1
-            elif self.lastDirection == 1:
-                send_message_to_mqtt("/themotor/move", str(random.randrange(1000,10000)))
-                self.lastDirection = -1
+        # send_message_to_mqtt("/thelight/1/brightness", concentration_value)
+        # send_message_to_mqtt("/thesun/light/1/brightness", relaxation_value)
+        # send_message_to_mqtt("/thesun/light/2/brightness", relaxation_value)
+        # timeNow = time.time()
+        # if (relaxation_value < 0.3 and (timeNow - self.lastMoveTime) > 3.5):
+        #     self.lastMoveTime = timeNow
+        #     print("move")
+        #     if self.lastDirection == -1:
+        #         # send_message_to_mqtt("/themotor/move", "-" + str(random.randrange(1000,10000)))
+        #         self.lastDirection = 1
+        #     elif self.lastDirection == 1:
+        #         # send_message_to_mqtt("/themotor/move", str(random.randrange(1000,10000)))
+        #         self.lastDirection = -1
                 
         oscTidal.send_message("/ctrl", ['relaxation', relaxation_value])
 
