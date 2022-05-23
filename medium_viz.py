@@ -4,6 +4,7 @@ import time
 import logging
 import random
 import numpy as np
+import time
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui, QtCore
@@ -16,9 +17,19 @@ from brainflow.ml_model import MLModel, BrainFlowMetrics, BrainFlowClassifiers, 
 from pythonosc.udp_client import SimpleUDPClient
 oscTidal = SimpleUDPClient("127.0.0.1", 6010)  # Create client
 
+import paho.mqtt.publish as publish
+import random
 
 def send_message_to_tidal(name, value):
+    publish.single(f"/brain/{name}", str(value), hostname="crystal.local")
     oscTidal.send_message("/ctrl", [name, value])
+
+def send_message_to_servo(number, value):
+    publish.single(f"/servos/{str(number)}", str(value), hostname="crystal.local")
+
+def send_message_to_mqtt(path, value):
+    publish.single(path, str(value), hostname="192.168.1.1")
+
 
 class Graph:
     def __init__(self, board_shim):
@@ -28,11 +39,12 @@ class Graph:
         self.accel_channels = BoardShim.get_accel_channels(self.board_id)
         self.gyro_channels = BoardShim.get_gyro_channels(self.board_id)
         self.sampling_rate = BoardShim.get_sampling_rate(self.board_id)
-        self.update_speed_ms = 50
+        self.update_speed_ms = 100
         self.window_size = 4
         self.num_points = self.window_size * self.sampling_rate
         self.num_points_big = self.window_size * self.sampling_rate * 2
-
+        
+        self.lastMoveTime = time.time()
         self.eeg_names = BoardShim.get_eeg_names(self.board_id)
         print(self.eeg_names)
         self.app = QtGui.QApplication([])
@@ -46,6 +58,7 @@ class Graph:
         relaxation_params = BrainFlowModelParams(BrainFlowMetrics.RELAXATION.value, BrainFlowClassifiers.REGRESSION.value)
         self.relaxation = MLModel(relaxation_params)
         self.relaxation.prepare()
+        self.lastDirection = -1
 
         # self.nfft = DataFilter.get_nearest_power_of_two(self.sampling_rate)
 
@@ -83,7 +96,7 @@ class Graph:
             p.setMenuEnabled('left', False)
             p.showAxis('bottom', False)
             p.setMenuEnabled('bottom', False)
-            p.setYRange(-0.1,0.1)
+            # p.setYRange(-0.1,0.1)
             
             p.setTitle(f"ACCEL #{i-current_curves_count}")
             self.plots.append(p)
@@ -97,7 +110,7 @@ class Graph:
             p.setMenuEnabled('left', False)
             p.showAxis('bottom', False)
             p.setMenuEnabled('bottom', False)
-            p.setYRange(-8,8)
+            # p.setYRange(-8,8)
             
             p.setTitle(f"GYRO #{i-current_curves_count}")
             self.plots.append(p)
@@ -138,13 +151,13 @@ class Graph:
                                    WindowFunctions.BLACKMAN_HARRIS.value)
             # DataFilter.perform_wavelet_denoising(filtered_data[channel], 'coif3', 2)
 
-            band_power[channel][0] = DataFilter.get_band_power(psd, 1, 3) # delta
-            band_power[channel][1] = DataFilter.get_band_power(psd, 4, 7) # theta
-            band_power[channel][2] = DataFilter.get_band_power(psd, 7.5, 12.5) # mu
-            band_power[channel][3] = DataFilter.get_band_power(psd, 12.5, 15.5) # smr
-            band_power[channel][4] = DataFilter.get_band_power(psd, 8.0, 12.0) # alpha
-            band_power[channel][5] = DataFilter.get_band_power(psd, 12.0, 30.0) # beta
-            band_power[channel][6] = DataFilter.get_band_power(psd, 32.00, 59) # gamma
+            # band_power[channel][0] = DataFilter.get_band_power(psd, 1, 3) # delta
+            # band_power[channel][1] = DataFilter.get_band_power(psd, 4, 7) # theta
+            # band_power[channel][2] = DataFilter.get_band_power(psd, 7.5, 12.5) # mu
+            # band_power[channel][3] = DataFilter.get_band_power(psd, 12.5, 15.5) # smr
+            # band_power[channel][4] = DataFilter.get_band_power(psd, 8.0, 12.0) # alpha
+            # band_power[channel][5] = DataFilter.get_band_power(psd, 12.0, 30.0) # beta
+            # band_power[channel][6] = DataFilter.get_band_power(psd, 32.00, 59) # gamma
             # print(len(filtered_data[channel]) % 2)
             # fft_data = DataFilter.perform_fft(filtered_data[channel][-nfft:], WindowFunctions.NO_WINDOW.value)
             # print(fft_data)
@@ -157,13 +170,35 @@ class Graph:
                                       FilterTypes.BUTTERWORTH.value, 1)
 
             self.curves[count+len(self.eeg_channels)].setData(data[channel][-self.num_points:])
+            if count == 0:
+                if np.average(abs(data[channel][-1])) > 0.05:
+                    # send_message_to_mqtt("/themotor/move", str(int(np.average(data[channel][-1])*5000)))
+                    print(np.average(data[channel][-1]))
 
         for count, channel in enumerate(self.gyro_channels):
             self.curves[count+len(self.eeg_channels)+len(self.accel_channels)].setData(data[channel][-self.num_points:])
+            if count == 2:
+                movement = np.average(data[channel][-100:])
+                if abs(movement) > 20:
+                    send_message_to_mqtt("/theground/rotation", str(int(movement*10000)))
+
+            # if count == 0:
+            #     movement = np.average(data[channel][-100:])
+            #     if abs(movement) > 20:
+            #         send_message_to_mqtt("/themotor/move", str(int(movement*100)))
 
 
-        average_band_power = np.mean(band_power, axis=0)
-        print(average_band_power)
+            if count == 1:
+                movement = np.average(data[channel][-100:])
+                if abs(movement) > 20:
+                    send_message_to_mqtt("/thesun/rotation", str(int(movement*10000)))
+
+            # print(np.average(data[channel][-100:]))
+
+
+
+        # average_band_power = np.mean(band_power, axis=0)
+        # print(average_band_power)
         # oscTidal.send_message("/ctrl", ['delta', average_band_power[0]])
         # oscTidal.send_message("/ctrl", ['theta', average_band_power[0]])
         # oscTidal.send_message("/ctrl", ['mu', relaxation_value])
@@ -175,7 +210,21 @@ class Graph:
         # print(f"alpha/beta {average_band_power[4]/average_band_power[5]}")
         
         bands = DataFilter.get_avg_band_powers(filtered_data, self.eeg_channels, self.sampling_rate, True)
-        print(bands)
+        print(bands[0])
+
+        send_message_to_mqtt("/servos/1", bands[1][0])
+        send_message_to_mqtt("/servos/2", bands[1][1])
+        send_message_to_mqtt("/servos/0", bands[1][2])
+        send_message_to_mqtt("/servos/5", 1.0 - bands[1][3])
+        send_message_to_mqtt("/servos/6", 1.0 - bands[1][4])
+
+
+        send_message_to_mqtt("/servos/3", bands[0][0])
+        send_message_to_mqtt("/servos/4", bands[0][1])
+
+        # send_message_to_mqtt("/servos/0", 1.0 - bands[1][1])
+        
+
         feature_vector = np.concatenate((bands[0], bands[1]))
         # print(feature_vector)
         #calc concentration
@@ -183,20 +232,61 @@ class Graph:
         # concentration = MLModel(concentration_params)
         # concentration.prepare()
         concentration_value = self.concentration.predict(feature_vector)
-        # print('Concentration: %f' % concentration_value)
+        print('Concentration: %f' % concentration_value)
         # concentration.release()
 
         #calc relaxation
         
         relaxation_value = self.relaxation.predict(feature_vector)
         # relaxation.release()
-        # print(f"Relaxation: {relaxation_value}, Concentration: {concentration_value}")
-        send_message_to_tidal('concentration', concentration_value)
-        send_message_to_tidal('relaxation', relaxation_value)
-
-        # oscTidal.send_message("/ctrl", ['relaxation', relaxation_value])
+        print(f"Relaxation: {relaxation_value}, Concentration: {concentration_value}")
+        # send_message_to_tidal('concentration', concentration_value)
+        # send_message_to_tidal('relaxation', relaxation_value)
+        # send_message_to_servo(2,relaxation_value)
+        send_message_to_mqtt("/thelight/1/brightness", concentration_value)
+        send_message_to_mqtt("/thesun/light/1/brightness", relaxation_value)
+        send_message_to_mqtt("/thesun/light/2/brightness", relaxation_value)
+        print('telax')
+        timeNow = time.time()
+        if (relaxation_value < 0.3 and (timeNow - self.lastMoveTime) > 3.5):
+            self.lastMoveTime = timeNow
+            print("move")
+            if self.lastDirection == -1:
+                send_message_to_mqtt("/themotor/move", "-" + str(random.randrange(1000,10000)))
+                self.lastDirection = 1
+            elif self.lastDirection == 1:
+                send_message_to_mqtt("/themotor/move", str(random.randrange(1000,10000)))
+                self.lastDirection = -1
+                
+        oscTidal.send_message("/ctrl", ['relaxation', relaxation_value])
 
         self.app.processEvents()
+
+# def main():
+#     BoardShim.enable_dev_board_logger()
+#     logging.basicConfig(level=logging.DEBUG)
+
+#     params = BrainFlowInputParams()
+#     # params.other_info = '8'
+#     # params.ip_address = '224.0.0.1'
+#     # params.ip_port = 6666
+#     print(params)
+#     # params.other_info = '8'
+#     # params.file = '/home/a0n/Unicorn-Suite-Hybrid-Black/MNE-Testdump.gtec'
+
+#     try:
+#         board_shim = BoardShim(8, params)
+#         board_shim.prepare_session()
+#         board_shim.start_stream(450000)
+#         g = Graph(board_shim)
+#     except BaseException as e:
+#         logging.warning('Exception', exc_info=True)
+#     finally:
+#         logging.info('End')
+#         if board_shim.is_prepared():
+#             logging.info('Releasing session')
+#             board_shim.release_session()
+
 
 
 def main():
@@ -214,7 +304,7 @@ def main():
     try:
         board_shim = BoardShim(-2, params)
         board_shim.prepare_session()
-        board_shim.start_stream(450000)
+        board_shim.start_stream(250000)
         g = Graph(board_shim)
     except BaseException as e:
         logging.warning('Exception', exc_info=True)
