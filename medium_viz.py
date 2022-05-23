@@ -30,6 +30,16 @@ def send_message_to_servo(number, value):
 def send_message_to_mqtt(path, value):
     publish.single(path, str(value), hostname="192.168.1.1")
 
+last_feature_vector = ["0","0","0","0","0","0","0","0","0","0"];
+
+def send_feature_vector_to_mqtt(features):
+    messages = []
+    for count, feature in enumerate(features):
+        formatted_feature = "{:.2f}".format(feature)
+        if formatted_feature != last_feature_vector[count]:
+            messages.append({"topic": f"/mirror/{count+1}/position", "payload": formatted_feature})
+    publish.multiple(messages, hostname="192.168.1.1")
+
 class Graph:
     def __init__(self, board_shim):
         self.board_id = board_shim.get_board_id()
@@ -39,7 +49,7 @@ class Graph:
         self.gyro_channels = BoardShim.get_gyro_channels(self.board_id)
         self.feature_bands = [1,2,3,4,5,6,7,8,9,10]
         self.sampling_rate = BoardShim.get_sampling_rate(self.board_id)
-        self.update_speed_ms = 50
+        self.update_speed_ms = 100
         self.window_size = 4
         self.num_points = self.window_size * self.sampling_rate
         self.num_points_big = self.window_size * self.sampling_rate * 2
@@ -261,17 +271,19 @@ class Graph:
         
 
         feature_vector = np.concatenate((bands[0], bands[1]))
+        send_feature_vector_to_mqtt(feature_vector)
 
-        
+        print(f"feature_vector {feature_vector}")
+
+
         self.filtered_feature_data = np.append(self.filtered_feature_data, feature_vector[:,None], axis=1)
         self.filtered_feature_data = np.delete(self.filtered_feature_data, 0, axis=1)
 
         for count, channel in enumerate(self.feature_bands):
             self.curves[count+len(self.eeg_channels)+len(self.accel_channels)+len(self.gyro_channels)].setData(self.filtered_feature_data[count][-self.num_points:])
-        
-        print(len(self.filtered_feature_data[0]))
+        # print(len(self.filtered_feature_data[0]))
 
-        print(f"Feature: {feature_vector[:,None]}")
+        # print(f"Feature: {feature_vector[:,None]}")
         # print(feature_vector)
         #calc concentration
         # concentration_params = BrainFlowModelParams(BrainFlowMetrics.CONCENTRATION.value, BrainFlowClassifiers.KNN.value)
@@ -286,6 +298,8 @@ class Graph:
         relaxation_value = self.relaxation.predict(feature_vector)
         # relaxation.release()
         # print(f"Relaxation: {relaxation_value}, Concentration: {concentration_value}")
+
+        # send_message_to_mqtt("/mirror/10/position", bands[1][0]);
 
         self.mental_state_data = np.delete(np.append(self.mental_state_data, [[relaxation_value],[concentration_value]], axis=1), 0, axis=1)
         
