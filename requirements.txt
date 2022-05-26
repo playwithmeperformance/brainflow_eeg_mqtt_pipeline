@@ -1,0 +1,5 @@
+pyqtgraph
+brainflow
+pandas
+python-osc
+paho-mqtt

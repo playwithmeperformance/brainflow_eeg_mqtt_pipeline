@@ -34,14 +34,16 @@ def main():
 
     board.prepare_session()
     board.config_board ('loopback_true')
-    board.start_stream(45000, 'streaming_board://224.0.0.1:6666')
+    board.start_stream(5000, 'streaming_board://224.0.0.1:6666')
     BoardShim.log_message(LogLevels.LEVEL_INFO.value, 'start sleeping in the main thread')
 
     killer = GracefulKiller()
     while not killer.kill_now:
-        time.sleep(5)
+        time.sleep(1)
+        print(board.get_board_data_count())
         data = board.get_board_data()
-        print(data)
+        # print(board.get_board_data_count())
+        # print(len(data.flatten()))
 
     print("Closing Stream") 
     board.stop_stream()

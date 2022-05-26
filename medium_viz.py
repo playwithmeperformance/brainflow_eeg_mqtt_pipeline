@@ -21,7 +21,7 @@ import paho.mqtt.publish as publish
 import random
 
 def send_message_to_tidal(name, value):
-    publish.single(f"/brain/{name}", str(value), hostname="crystal.local")
+    # publish.single(f"/brain/{name}", str(value), hostname="crystal.local")
     oscTidal.send_message("/ctrl", [name, value])
 
 def send_message_to_servo(number, value):
@@ -34,10 +34,10 @@ last_feature_vector = ["0","0","0","0","0","0","0","0","0","0"];
 
 def send_feature_vector_to_mqtt(features):
     messages = []
-    for count, feature in enumerate(features):
+    for count, feature in enumerate(reversed(features)):
         formatted_feature = "{:.2f}".format(feature)
         if formatted_feature != last_feature_vector[count]:
-            messages.append({"topic": f"/mirror/{count+1}/position", "payload": formatted_feature})
+            messages.append({"topic": f"/mirror/{10-count}/position", "payload": formatted_feature})
     publish.multiple(messages, hostname="192.168.1.1")
 
 class Graph:
@@ -97,7 +97,7 @@ class Graph:
             p.setMenuEnabled('left', False)
             p.showAxis('bottom', False)
             p.setMenuEnabled('bottom', False)
-            p.setYRange(-100,100)
+            # p.setYRange(-100,100)
             
             p.setTitle(self.eeg_names[i])
             self.plots.append(p)
@@ -139,7 +139,7 @@ class Graph:
             p.setMenuEnabled('left', False)
             p.showAxis('bottom', False)
             p.setMenuEnabled('bottom', False)
-            # p.setYRange(0,1)
+            # p.setYRange(0,1.5)
             
             p.setTitle(f"Feature #{i}")
             self.plots.append(p)
@@ -273,7 +273,7 @@ class Graph:
         feature_vector = np.concatenate((bands[0], bands[1]))
         send_feature_vector_to_mqtt(feature_vector)
 
-        print(f"feature_vector {feature_vector}")
+        # print(f"feature_vector {feature_vector}")
 
 
         self.filtered_feature_data = np.append(self.filtered_feature_data, feature_vector[:,None], axis=1)
