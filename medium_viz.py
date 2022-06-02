@@ -33,7 +33,7 @@ def send_message_to_mqtt(path, value):
 last_feature_vector = ["0","0","0","0","0","0","0","0","0","0"];
 
 def send_feature_vector_to_mqtt(features):
-    messages = []
+    messages = []    
     for count, feature in enumerate(reversed(features)):
         formatted_feature = "{:.2f}".format(feature)
         if formatted_feature != last_feature_vector[count]:
@@ -132,19 +132,19 @@ class Graph:
             curve = p.plot()
             self.curves.append(curve)
 
-        current_curves_count = len(self.curves)
-        for i in self.feature_bands:
-            p = self.win.addPlot(row=i+current_curves_count,col=0)
-            p.showAxis('left', False)
-            p.setMenuEnabled('left', False)
-            p.showAxis('bottom', False)
-            p.setMenuEnabled('bottom', False)
-            # p.setYRange(0,1.5)
+        # current_curves_count = len(self.curves)
+        # for i in self.feature_bands:
+        #     p = self.win.addPlot(row=i+current_curves_count,col=0)
+        #     p.showAxis('left', False)
+        #     p.setMenuEnabled('left', False)
+        #     p.showAxis('bottom', False)
+        #     p.setMenuEnabled('bottom', False)
+        #     # p.setYRange(0,1.5)
             
-            p.setTitle(f"Feature #{i}")
-            self.plots.append(p)
-            curve = p.plot()
-            self.curves.append(curve)
+        #     p.setTitle(f"Feature #{i}")
+        #     self.plots.append(p)
+        #     curve = p.plot()
+        #     self.curves.append(curve)
 
         current_curves_count = len(self.curves)
         for count,name in enumerate(self.mental_states):
@@ -270,7 +270,7 @@ class Graph:
         # send_message_to_mqtt("/servos/0", 1.0 - bands[1][1])
         
 
-        feature_vector = np.concatenate((bands[0], bands[1]))
+        feature_vector = np.concatenate((bands[0], bands[0]))
         send_feature_vector_to_mqtt(feature_vector)
 
         # print(f"feature_vector {feature_vector}")
@@ -279,8 +279,8 @@ class Graph:
         self.filtered_feature_data = np.append(self.filtered_feature_data, feature_vector[:,None], axis=1)
         self.filtered_feature_data = np.delete(self.filtered_feature_data, 0, axis=1)
 
-        for count, channel in enumerate(self.feature_bands):
-            self.curves[count+len(self.eeg_channels)+len(self.accel_channels)+len(self.gyro_channels)].setData(self.filtered_feature_data[count][-self.num_points:])
+        # for count, channel in enumerate(self.feature_bands):
+        #     self.curves[count+len(self.eeg_channels)+len(self.accel_channels)+len(self.gyro_channels)].setData(self.filtered_feature_data[count][-self.num_points:])
         # print(len(self.filtered_feature_data[0]))
 
         # print(f"Feature: {feature_vector[:,None]}")
@@ -304,7 +304,7 @@ class Graph:
         self.mental_state_data = np.delete(np.append(self.mental_state_data, [[relaxation_value],[concentration_value]], axis=1), 0, axis=1)
         
         for count, channel in enumerate(self.mental_states):
-            self.curves[count+len(self.eeg_channels)+len(self.accel_channels)+len(self.gyro_channels)+len(self.feature_bands)].setData(self.mental_state_data[count][-self.num_points:])
+            self.curves[count+len(self.eeg_channels)+len(self.accel_channels)+len(self.gyro_channels)].setData(self.mental_state_data[count][-self.num_points:])
         
         # send_message_to_tidal('concentration', concentration_value)
         # send_message_to_tidal('relaxation', relaxation_value)
@@ -322,54 +322,44 @@ class Graph:
         #     elif self.lastDirection == 1:
         #         # send_message_to_mqtt("/themotor/move", str(random.randrange(1000,10000)))
         #         self.lastDirection = -1
-                
+        print("relax " + str(relaxation_value));
+
+        print("con " + str(concentration_value));
         oscTidal.send_message("/ctrl", ['relaxation', relaxation_value])
+        oscTidal.send_message("/ctrl", ['concentration', concentration_value])
+        oscTidal.send_message("/ctrl", ['irelaxation', int(relaxation_value*100)])
+        oscTidal.send_message("/ctrl", ['iconcentration', int(concentration_value*10)])
+
+        oscTidal.send_message("/ctrl", ['alpha', bands[0][0]])
+        oscTidal.send_message("/ctrl", ['beta', bands[0][1]])
+        oscTidal.send_message("/ctrl", ['theta', bands[0][2]])
+        oscTidal.send_message("/ctrl", ['delta', bands[0][3]])
+        oscTidal.send_message("/ctrl", ['gamma', bands[0][4]])
+
+        oscTidal.send_message("/ctrl", ['ialpha', int(bands[0][0]*10)])
+        oscTidal.send_message("/ctrl", ['ibeta', int(bands[0][1]*10)])
+        oscTidal.send_message("/ctrl", ['itheta', int(bands[0][2]*10)])
+        oscTidal.send_message("/ctrl", ['idelta', int(bands[0][3]*10)])
+        oscTidal.send_message("/ctrl", ['igamma', int(bands[0][4]*10)])
 
         self.app.processEvents()
-
-# def main():
-#     BoardShim.enable_dev_board_logger()
-#     logging.basicConfig(level=logging.DEBUG)
-
-#     params = BrainFlowInputParams()
-#     # params.other_info = '8'
-#     # params.ip_address = '224.0.0.1'
-#     # params.ip_port = 6666
-#     print(params)
-#     # params.other_info = '8'
-#     # params.file = '/home/a0n/Unicorn-Suite-Hybrid-Black/MNE-Testdump.gtec'
-
-#     try:
-#         board_shim = BoardShim(8, params)
-#         board_shim.prepare_session()
-#         board_shim.start_stream(450000)
-#         g = Graph(board_shim)
-#     except BaseException as e:
-#         logging.warning('Exception', exc_info=True)
-#     finally:
-#         logging.info('End')
-#         if board_shim.is_prepared():
-#             logging.info('Releasing session')
-#             board_shim.release_session()
-
-
 
 def main():
     BoardShim.enable_dev_board_logger()
     logging.basicConfig(level=logging.DEBUG)
 
     params = BrainFlowInputParams()
-    params.other_info = '8'
-    params.ip_address = '224.0.0.1'
-    params.ip_port = 6666
+    # params.other_info = '8'
+    # params.ip_address = '224.0.0.1'
+    # params.ip_port = 6666
     print(params)
     # params.other_info = '8'
     # params.file = '/home/a0n/Unicorn-Suite-Hybrid-Black/MNE-Testdump.gtec'
 
     try:
-        board_shim = BoardShim(-2, params)
+        board_shim = BoardShim(8, params)
         board_shim.prepare_session()
-        board_shim.start_stream(250000)
+        board_shim.start_stream(450000)
         g = Graph(board_shim)
     except BaseException as e:
         logging.warning('Exception', exc_info=True)
@@ -378,6 +368,33 @@ def main():
         if board_shim.is_prepared():
             logging.info('Releasing session')
             board_shim.release_session()
+
+
+
+# def main():
+#     BoardShim.enable_dev_board_logger()
+#     logging.basicConfig(level=logging.DEBUG)
+
+#     params = BrainFlowInputParams()
+#     params.other_info = '8'
+#     params.ip_address = '224.0.0.1'
+#     params.ip_port = 6666
+#     print(params)
+#     # params.other_info = '8'
+#     # params.file = '/home/a0n/Unicorn-Suite-Hybrid-Black/MNE-Testdump.gtec'
+
+#     try:
+#         board_shim = BoardShim(-2, params)
+#         board_shim.prepare_session()
+#         board_shim.start_stream(250000)
+#         g = Graph(board_shim)
+#     except BaseException as e:
+#         logging.warning('Exception', exc_info=True)
+#     finally:
+#         logging.info('End')
+#         if board_shim.is_prepared():
+#             logging.info('Releasing session')
+#             board_shim.release_session()
 
 
 if __name__ == '__main__':
